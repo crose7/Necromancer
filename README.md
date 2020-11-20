@@ -8,9 +8,9 @@ You can check if you already have these installed by running these commands at t
 Once you've verified installation:
 1) Open the command line
 2) Navigate to the folder of your choice
-3) Run the command `git clone https://github.com/crose7/Undertaker` — this will install the base files.
-4) Navigate to the newly created Undertaker folder
-5) Run the command `npm install` — this will download the libraries that Undertaker requires to function.
+3) Run the command `git clone https://github.com/crose7/Necromancer` — this will install the base files.
+4) Navigate to the newly created Necromancer folder
+5) Run the command `npm install` — this will download the libraries that Necromancer requires to function.
 
 ## Updating to the latest version
 Necromancer is in rapid development. To update to the latest version, navigate to your Necromancer folder in the command line and run

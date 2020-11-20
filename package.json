@@ -1,0 +1,22 @@
+{
+  "name": "Necromancer",
+  "version": "1.0.0",
+  "description": "Raises posts back from the dead.",
+  "main": "Necromancer.js",
+  "dependencies": {
+    "bson": "^4.0.2",
+    "cheerio": "^1.0.0-rc.3",
+    "node-fetch": "^2.6.0",
+    "xml2js": "^0.4.23"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "archive",
+    "kinja"
+  ],
+  "author": "crose7",
+  "license": "ISC"
+}

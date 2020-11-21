@@ -177,7 +177,7 @@ console.log(r.feed.link)
                 let comments    =   []
                 while( cond ){
 // console.log(this.selectedEndpoint+`/${id}?startIndex=${startIndex}&maxReturned=100&approvedOnly=false&cache=true&sorting=oldest`)
-console.log(`DOWNLOAD`,id,this.selectedEndpoint+`/${id}?startIndex=${startIndex}&maxReturned=100&approvedOnly=false&cache=true&sorting=oldest`)
+// console.log(`DOWNLOAD`,id,this.selectedEndpoint+`/${id}?startIndex=${startIndex}&maxReturned=100&approvedOnly=false&cache=true&sorting=oldest`)
                     let r       =   await fetch(this.selectedEndpoint+`/${id}?startIndex=${startIndex}&maxReturned=100&approvedOnly=false&cache=true&sorting=oldest`).catch(err=>{ this.errors.push(err); throw(`Necromancer download() TaskItem fetch`) })
                         r       =   await r.json().catch(err=>{ this.errors.push(err); throw(`Necromancer download() TaskItem json`) })
 

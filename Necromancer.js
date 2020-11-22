@@ -353,7 +353,7 @@ console.log(queryURL)
                 startIndex      =   r.data.pagination.curr.startIndex
                 postProgress    =   startIndex
                 totalPosts      =   r.data.pagination.total
-                // firstLoop       =   false
+                firstLoop       =   false
             }
             console.log(`PAGINATION`,r.data.pagination)
             let _searchQuery    =   queryURL.split(`?`)[1]
@@ -390,7 +390,7 @@ console.log(queryURL)
 
                     }else{
                         startIndex      =   next.startIndex
-                        if( firstLoop ){ startIndex=9500; firstLoop=false}
+                        // if( firstLoop ){ startIndex=9500; firstLoop=false}
                         // startIndex      +=  100
 console.log(`ELSE QUERY`,query,this.query)
                         queryURL        =   `${this.selectedEndpoint}&query=${encodeURIComponent(`${query}`)}&startIndex=${startIndex}`

@@ -30,11 +30,10 @@ let Necromancer             =   class{
         this.indexFinished
         this.resumeURL
 
-        this.errors         =   []
-
         let _query          =   this.parseFlag(`query`,args)
         let _fastDownload   =   process.argv.some(x=>x===`--fastDownload`)  ||  (args?args.fastDownload:0)
         let _download       =   process.argv.some(x=>x===`--download`)      ||  (args?args.download:0)
+        let _logAuthors     =   process.argv.some(x=>x===`--logAuthors`)    ||  (args?args.logAuthors:0)
         let _logBlogs       =   process.argv.some(x=>x===`--logBlogs`)      ||  (args?args.logBlogs:0)
         let _rssExport      =   process.argv.some(x=>x===`--rssExport`)     ||  (args?args.rssExport:0)
 
@@ -44,16 +43,19 @@ let Necromancer             =   class{
         for( let key in f ){
             this[key]       =   f[key]
         }
+        this.errors=[]
         console.log(this)
 
         if( _logBlogs ){ this.logBlogs(); return; }
+        if( _logAuthors ){ this.logAuthors(); return; }
 
         if( _query ){
             this.selectedEndpoint   =   searchEndpoint
-            this.query              =   _query
+            this.query              =   this.query?this.query:_query+` sort:oldest`
             this.queryURL           =   this.queryURL?this.queryURL:this.selectedEndpoint+`&query=${encodeURIComponent(this.query)}&startIndex=0`
             // this.resumeURL          =   this.queryURL
-            return this.fetchIDs()
+            console.log(`FETCH IDS`,this.query)
+            if( !args ){ return this.fetchIDs() }
         }
 
         if ( _rssExport ){
@@ -61,20 +63,19 @@ let Necromancer             =   class{
             this.selectedEndpoint   =   process.argv[index+1]
             this.queryURL           =   this.queryURL?this.queryURL:this.selectedEndpoint+`&startTime=${new Date().getTime()}`
             console.log(`RSS EXPORT`,this.queryURL)
-            return this.rssExport()
+            if( !args ){ return this.rssExport() }
         }
 
         if( _download ){
             this.selectedEndpoint   =   flatrepliesEndpoint
             console.log(`DOWNLOAD`,this.selectedEndpoint,this.queryURL)
-            return this.download()
+            if( !args ){ return this.download() }
         }
 
         if( _fastDownload ){
             this.selectedEndpoint   =   postsEndpoint
-            return this.fastDownload()
+            if( !args ){ return this.fastDownload() }
         }
-
     }
 
 
@@ -91,6 +92,11 @@ let Necromancer             =   class{
         }
         return r
     }
+
+
+
+
+
 
 
 
@@ -140,13 +146,18 @@ console.log(r.feed.link)
             }
         }
         this.indexFinished         =   true
-        console.log(`Necromancer fetchIDs() ${ids.length} ids tallied`)
+        console.log(`Necromancer rssExport() ${ids.length} ids tallied`)
         // dataOutput.end()
         fs.writeFileSync(`${this.name}/ids`,JSON.stringify(ids))
         fs.writeFileSync(`${this.name}/progressInfo`,JSON.stringify(this))
 
         if(this.errors.length){this.errors.forEach(err=>console.log(err))}
     }
+
+
+
+
+
 
 
 
@@ -176,7 +187,7 @@ console.log(r.feed.link)
                 let article
                 let comments    =   []
                 while( cond ){
-// console.log(this.selectedEndpoint+`/${id}?startIndex=${startIndex}&maxReturned=100&approvedOnly=false&cache=true&sorting=oldest`)
+
 // console.log(`DOWNLOAD`,id,this.selectedEndpoint+`/${id}?startIndex=${startIndex}&maxReturned=100&approvedOnly=false&cache=true&sorting=oldest`)
                     let r       =   await fetch(this.selectedEndpoint+`/${id}?startIndex=${startIndex}&maxReturned=100&approvedOnly=false&cache=true&sorting=oldest`).catch(err=>{ this.errors.push(err); throw(`Necromancer download() TaskItem fetch`) })
                         r       =   await r.json().catch(err=>{ this.errors.push(err); throw(`Necromancer download() TaskItem json`) })
@@ -190,8 +201,8 @@ console.log(r.feed.link)
                         cond                =   !!pagination.next
                         startIndex          +=  100
                     let index               =   ids.findIndex(x=>x.id==article.id)
-// console.log(pagination.curr.total,comments.length,article.headline)
                         ids[index].download =   true
+// console.log(pagination.curr.total,comments.length,article.headline)
                 }
             console.log(`Necromancer download() while\tprogress: ${ids.filter(x=>x.download).length}/${ids.length}\tcomments: ${comments.length}\tid: ${article.id}\tarticle: ${article.headline}`)
                 articleOutput.write( zlib.gzipSync(JSON.stringify(article)) )
@@ -308,67 +319,130 @@ console.log(r.feed.link)
     async fetchIDs(){
         if( this.indexFinished ){ console.log(`INDEX FINISHED`); return; }
 
-        // let ids             =   {}
         let ids             =   []
         if( fs.existsSync(`${this.name}/ids`) ){ ids = JSON.parse(fs.readFileSync(`${this.name}/ids`)) }
 
-        let dataOutput      =   fs.createWriteStream(`${this.name}/data/initialData`, { flags:`a` })
+        // let dataOutput      =   fs.createWriteStream(`${this.name}/data/initialData`, { flags:`a` })
         // let idOutput        =   fs.createWriteStream(`${this.name}/ids`, { flags:`a` })
-        let queryURL        =   this.queryURL
+        let startIndex      //=   0
+        // let startIndex      =   9500 //FOR TESTING
+        let queryURL        =   this.queryURL //+`&startIndex=${startIndex}`
         let query           =   this.query
-        let startIndex      =   0
         let cond            =   true
-        while(cond){
-            // if(Math.random() < 0.2){
-            //     fs.writeFileSync(`${this.name}/progressInfo`,JSON.stringify(this))
-            //     fs.writeFileSync(`${this.name}/ids`,JSON.stringify(ids))
-            //     throw(`THROW`)
-            // }
+        let firstLoop       =   true
+        let totalPosts      =   0
+        let postProgress    =   0
+
+        let dateRangeFix    =   0
+console.log(queryURL)
+        while( cond ){
             // console.log(`Necromancer fetchIDs() while ${queryURL}`)
             let r           =   await fetch(queryURL).catch( err => {
-                                    // fs.writeFileSync(`${this.name}/progressInfo`,JSON.stringify(this))
-                                    // fs.writeFileSync(`${this.name}/ids`,JSON.stringify(ids))
+                                    fs.writeFileSync(`${this.name}/progressInfo`,JSON.stringify(this))
+                                    fs.writeFileSync(`${this.name}/ids`,JSON.stringify(ids))
                                     this.errors.push(err)
                                     throw(`Necromancer fetchIDs() while fetch`,err )
                                 })
                 r           =   await r.json().catch( err => {
-                                    // fs.writeFileSync(`${this.name}/progressInfo`,JSON.stringify(this))
-                                    // fs.writeFileSync(`${this.name}/ids`,JSON.stringify(ids))
+                                    fs.writeFileSync(`${this.name}/progressInfo`,JSON.stringify(this))
+                                    fs.writeFileSync(`${this.name}/ids`,JSON.stringify(ids))
                                     this.errors.push(err)
                                     throw(`Necromancer fetchIDs() while json`, err)
                                 })
-            console.log(`Necromancer fetchIDs() while ${queryURL} ${r.data.pagination.curr.startIndex}/${r.data.pagination.total}`)
-
-            let next            =   r.data.pagination.next
-            if( next ){
-                startIndex      =   r.data.pagination.next.startIndex
-                queryURL        =   this.selectedEndpoint+`&query=${query}&startIndex=${startIndex}`
-                this.queryURL   =   queryURL
-                fs.writeFileSync(`${this.name}/progressInfo`,JSON.stringify(this))
-            }else{
-                cond            =   false
+            if( firstLoop && r.data ){
+                startIndex      =   r.data.pagination.curr.startIndex
+                postProgress    =   startIndex
+                totalPosts      =   r.data.pagination.total
+                // firstLoop       =   false
             }
-            r.data.items.map(x=>JSON.stringify(x)).map(x=>zlib.gzipSync(x)).forEach(x=>dataOutput.write(x))
-            r.data.items.map(x=>x.id).forEach(id=>{
-                if(!ids.some(x=>x.id===id)){
-                    ids.push({
-                        id:             id,
-                        fastDownload:   false,
-                        download:       false,
-                    })
-                }
+            console.log(`PAGINATION`,r.data.pagination)
+            let _searchQuery    =   queryURL.split(`?`)[1]
+                _searchQuery    =   _searchQuery.split(`&`)
+                _searchQuery    =   _searchQuery.filter(item=>item.split(`=`)[0]==`query`).map(x=>decodeURIComponent(x))
+            console.log(`QUERY`,_searchQuery)
+
+            let items           =   r.data.items.filter( x => !ids.some(y=>y.id==x.id) )//.filter(x=>x.publishTimeMillis>dateRangeFix)
+            let next            =   r.data.pagination.next
+
+            if( next ){
+
+                if( next.startIndex >= 10000 ){
+                    startIndex          =   0
+
+                    let finishedQuery   =  ``
+                        // DECONSTRUCT QUERY
+                    let params          =   queryURL.split(`?`)[1].split(`&`).filter(x=>x).map(x=>decodeURIComponent(x))
+                    let queryString     =   params.filter(x=>x.split(`=`)[0]===`query`)[0].split(`=`)[1]
+                    let queryItems      =   queryString.split(` `).filter(x=>x.split(`:`)[0]!==`after`)
+                        // RECONSTRUCT QUERY
+                        queryString     =   queryItems.reduce((acc,x)=>acc+=`${x} `,``)
+                    let startTime       =   r.data.items.reduce((acc,item)=>acc<item.publishTimeMillis?item.publishTimeMillis:acc,0)
+                        dateRangeFix    =   startTime   // OBSOLETE, WE NOW TRACK UNIQUES
+                        queryString     +=  `after:${ new Date(startTime).toISOString().split(`T`)[0].replace(/\-/g,`/`) }`
+
+                        finishedQuery   +=  queryURL.split(`?`)[0]
+                        finishedQuery   +=  params.filter(x=>x.split(`=`)[0]!==`query`).filter(x=>x.split(`=`)[0]!==`startIndex`).reduce((acc,x)=>acc+=`&${x}`,`?`)
+                        finishedQuery   +=  `&query=${encodeURIComponent(`${queryString}`)}&startIndex=0`
+
+                        queryURL        =   finishedQuery
+                        this.query      =   queryString
+                        query           =   queryString
+
+                    }else{
+                        startIndex      =   next.startIndex
+                        if( firstLoop ){ startIndex=9500; firstLoop=false}
+                        // startIndex      +=  100
+console.log(`ELSE QUERY`,query,this.query)
+                        queryURL        =   `${this.selectedEndpoint}&query=${encodeURIComponent(`${query}`)}&startIndex=${startIndex}`
+
+                        this.queryURL   =   queryURL
+                    }
+
+
+            }else{
+                    cond            =   false
+            }
+
+            // items.map(x=>JSON.stringify(x)).map(x=>zlib.gzipSync(x)).forEach(x=>postOutput.write(x))
+            items.map(x=>x.id).forEach(id=>{
+                ids.push({
+                    id:             id,
+                    fastDownload:   false,
+                    download:       false,
+                })
             })
+            postProgress            +=  items.length
+
+            console.log(`Necromancer fetchIDs() while\t${postProgress}/${totalPosts} ${r.data.pagination.total}`)
+            fs.writeFileSync(`${this.name}/progressInfo`,JSON.stringify(this))
         }
+
         this.indexFinished         =   true
         if(this.errors.length){this.errors.forEach(err=>console.log(err))}
-        console.log(`Necromancer fetchIDs() ${ids.length} ids tallied`)
-        dataOutput.end()
-        fs.writeFileSync(`${this.name}/ids`,JSON.stringify(ids))
-        fs.writeFileSync(`${this.name}/progressInfo`,JSON.stringify(this))
+        console.log(`Necromancer fetchIDs() ${postProgress} ids tallied`)
+        // dataOutput.end()
+        // fs.writeFileSync(`${this.name}/ids`,JSON.stringify(ids))
+        // fs.writeFileSync(`${this.name}/progressInfo`,JSON.stringify(this))
     }
 
 
 
+
+
+
+
+
+
+
+    logPosts(){
+        if( !fs.existsSync(`${this.name}/data/posts`) ){throw(`POSTS NOT DOWNLOADED`)}
+        let x               =   new ArchiveManager(`${this.name}/data/posts`,()=>{})
+            x.each( item => console.log(`id: ${x.id}\t${this.publishTimeMillis}\t${this.headline}`) )
+    }
+    logAuthors(){
+        let authors         =   JSON.parse(zlib.gunzipSync(fs.readFileSync(`${this.name}/data/authors`)))
+        authors.forEach(author=>console.log(`id: ${author.id}\tname: ${author.screenName}\tdisplayName: ${author.displayName}`))
+    }
 
     logBlogs(){
         let blogs           =   JSON.parse(zlib.gunzipSync(fs.readFileSync(`${this.name}/data/blogs`)))

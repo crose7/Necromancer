@@ -12,7 +12,9 @@ let TaskItem                =   require(`./TaskQueue.js`).TaskItem
 let ArchiveManager          =   require(`./ArchiveManager.js`).ArchiveManager
 
 let Necromancer             =   class{
-    constructor(args){
+    // constructor(args){
+    constructor(args){ this._constructor() }
+    async _constructor(args){
         console.log(`Necromancer()`, args, process.argv)
         this.name           =   args?   args.name : process.argv[2]
 
@@ -31,11 +33,16 @@ let Necromancer             =   class{
         this.resumeURL
 
         let _query          =   this.parseFlag(`query`,args)
+
         let _fastDownload   =   process.argv.some(x=>x===`--fastDownload`)  ||  (args?args.fastDownload:0)
         let _download       =   process.argv.some(x=>x===`--download`)      ||  (args?args.download:0)
+        let _rssExport      =   process.argv.some(x=>x===`--rssExport`)     ||  (args?args.rssExport:0)
+
+        let _logPosts       =   process.argv.some(x=>x===`--logPosts`)      ||  (args?args.logPosts:0)
         let _logAuthors     =   process.argv.some(x=>x===`--logAuthors`)    ||  (args?args.logAuthors:0)
         let _logBlogs       =   process.argv.some(x=>x===`--logBlogs`)      ||  (args?args.logBlogs:0)
-        let _rssExport      =   process.argv.some(x=>x===`--rssExport`)     ||  (args?args.rssExport:0)
+        let _checkIDs       =   process.argv.some(x=>x===`--checkIDs`)      ||  (args?args.checkIDs:0)
+        let _checkSize      =   this.parseFlag(`checkSize`,args)//process.argv.some(x=>x===`--checkSize`)     ||  (args?args.checkSize:0)
 
         let f
         if( fs.existsSync(`${this.name}/progressInfo`) ){ f = JSON.parse( fs.readFileSync(`${this.name}/progressInfo`) ) }
@@ -46,8 +53,16 @@ let Necromancer             =   class{
         this.errors=[]
         console.log(this)
 
-        if( _logBlogs ){ this.logBlogs(); return; }
+        if( _checkIDs ){ this.checkIDs(); return; }
+        if( _logPosts ){ this.logPosts(); return; }
         if( _logAuthors ){ this.logAuthors(); return; }
+        if( _logBlogs ){ this.logBlogs(); return; }
+        if( _checkSize ){
+            console.log(`CHECK BEGIN`)
+            await this.checkSize( searchEndpoint+`&query=${encodeURIComponent(_checkSize)}&startIndex=0` );
+            console.log(`CHECK END`)
+            return;
+        }
 
         if( _query ){
             this.selectedEndpoint   =   searchEndpoint
@@ -104,8 +119,9 @@ let Necromancer             =   class{
     async rssExport(){
         if( this.indexFinished ){ console.log(`INDEX FINISHED`); return; }
 
-        let ids             =   []
-        if( fs.existsSync(`${this.name}/ids`) ){ ids = JSON.parse(fs.readFileSync(`${this.name}/ids`)) }
+        // let ids             =   []
+        // if( fs.existsSync(`${this.name}/ids`) ){ ids = this.readIDs() }
+        let idOutput        =   fs.createWriteStream(`${this.name}/ids`, { flags:`a` })
 
         // let dataOutput      =   fs.createWriteStream(`${this.name}/data/rssData`, { flags:`a` })
         // let idOutput        =   fs.createWriteStream(`${this.name}/ids`, { flags:`a` })
@@ -128,11 +144,13 @@ console.log(r.feed.entry)
             r.feed.entry.map(x=>x.id).forEach(_id=>{
                 if(!ids.some(x=>x.id===_id)){
                     let id      =   _id[0].match(/\d*$/)[0]
-                    ids.push({
+
+                    let o           =   {
                         id:             id,
                         fastDownload:   false,
                         download:       false,
-                    })
+                    }
+                    idOutput.write( zlib.gzipSync( JSON.stringify( o ) ))
                 }
             })
 console.log(r.feed.link)
@@ -148,7 +166,7 @@ console.log(r.feed.link)
         this.indexFinished         =   true
         console.log(`Necromancer rssExport() ${ids.length} ids tallied`)
         // dataOutput.end()
-        fs.writeFileSync(`${this.name}/ids`,JSON.stringify(ids))
+        idOutput.end()
         fs.writeFileSync(`${this.name}/progressInfo`,JSON.stringify(this))
 
         if(this.errors.length){this.errors.forEach(err=>console.log(err))}
@@ -174,7 +192,7 @@ console.log(r.feed.link)
         let queue           =   new TaskQueue(10,()=>{})
 
         if( fs.existsSync(`${this.name}/ids`) ){
-            ids             =   JSON.parse(fs.readFileSync(`${this.name}/ids`))
+            ids             =   await this.readIDs()
             undownloadedIDs =   ids.filter(x=>!x.download).map(x=>x.id)
         }else{ throw(`Necromancer fastDownload() NO IDS FOUND! Did you start with --query?`) }
 
@@ -213,7 +231,7 @@ console.log(r.feed.link)
         console.log(`Necromancer download() queue START`)
         await queue.start()
         fs.writeFileSync(`${this.name}/progressInfo`,JSON.stringify(this))
-        fs.writeFileSync(`${this.name}/ids`,JSON.stringify(ids))
+        this.writeIDs(ids)
         if(this.errors.length){this.errors.forEach(err=>console.log(err))}
         console.log(`Necromancer download() queue END`)
 
@@ -236,8 +254,10 @@ console.log(r.feed.link)
         let blogIDSet       =   new Set()
 
         if( fs.existsSync(`${this.name}/ids`) ){
-            ids             =   JSON.parse(fs.readFileSync(`${this.name}/ids`))
+            ids             =   await this.readIDs()
             undownloadedIDs =   ids.filter(x=>!x.fastDownload).map(x=>x.id)
+            // console.log(ids)
+            // return
         }else{ throw(`Necromancer fastDownload() NO IDS FOUND! Did you start with --query?`) }
 
         if( fs.existsSync(`${this.name}/authors`) ){
@@ -306,8 +326,8 @@ console.log(r.feed.link)
         await queue.start()
         if(this.errors.length){this.errors.forEach(err=>console.log(err))}
         console.log(`Necromancer fastDownload() queue END ${ids.filter(x=>x.fastDownload).length}/${ids.length}`)
+        this.writeIDs(ids)
         fs.writeFileSync(`${this.name}/progressInfo`,   JSON.stringify(this))
-        fs.writeFileSync(`${this.name}/ids`,            JSON.stringify(ids))
         fs.writeFileSync(`${this.name}/data/authors`,        zlib.gzipSync(JSON.stringify(authors)) )
         fs.writeFileSync(`${this.name}/data/blogs`,          zlib.gzipSync(JSON.stringify(blogs)) )
     }
@@ -320,10 +340,10 @@ console.log(r.feed.link)
         if( this.indexFinished ){ console.log(`INDEX FINISHED`); return; }
 
         let ids             =   []
-        if( fs.existsSync(`${this.name}/ids`) ){ ids = JSON.parse(fs.readFileSync(`${this.name}/ids`)) }
+        if( fs.existsSync(`${this.name}/ids`) ){ ids = await this.readIDs() }
 
         // let dataOutput      =   fs.createWriteStream(`${this.name}/data/initialData`, { flags:`a` })
-        // let idOutput        =   fs.createWriteStream(`${this.name}/ids`, { flags:`a` })
+        let idOutput        =   fs.createWriteStream(`${this.name}/ids`, { flags:`a` })
         let startIndex      //=   0
         // let startIndex      =   9500 //FOR TESTING
         let queryURL        =   this.queryURL //+`&startIndex=${startIndex}`
@@ -339,13 +359,11 @@ console.log(queryURL)
             // console.log(`Necromancer fetchIDs() while ${queryURL}`)
             let r           =   await fetch(queryURL).catch( err => {
                                     fs.writeFileSync(`${this.name}/progressInfo`,JSON.stringify(this))
-                                    fs.writeFileSync(`${this.name}/ids`,JSON.stringify(ids))
                                     this.errors.push(err)
                                     throw(`Necromancer fetchIDs() while fetch`,err )
                                 })
                 r           =   await r.json().catch( err => {
                                     fs.writeFileSync(`${this.name}/progressInfo`,JSON.stringify(this))
-                                    fs.writeFileSync(`${this.name}/ids`,JSON.stringify(ids))
                                     this.errors.push(err)
                                     throw(`Necromancer fetchIDs() while json`, err)
                                 })
@@ -399,17 +417,17 @@ console.log(`ELSE QUERY`,query,this.query)
                     }
 
 
-            }else{
-                    cond            =   false
-            }
+            }else{ cond = false }
 
             // items.map(x=>JSON.stringify(x)).map(x=>zlib.gzipSync(x)).forEach(x=>postOutput.write(x))
             items.map(x=>x.id).forEach(id=>{
-                ids.push({
+
+                let o           =   {
                     id:             id,
                     fastDownload:   false,
                     download:       false,
-                })
+                }
+                idOutput.write( zlib.gzipSync( JSON.stringify( o ) ))
             })
             postProgress            +=  items.length
 
@@ -421,7 +439,8 @@ console.log(`ELSE QUERY`,query,this.query)
         if(this.errors.length){this.errors.forEach(err=>console.log(err))}
         console.log(`Necromancer fetchIDs() ${postProgress} ids tallied`)
         // dataOutput.end()
-        fs.writeFileSync(`${this.name}/ids`,JSON.stringify(ids))
+        idOutput.end()
+
         fs.writeFileSync(`${this.name}/progressInfo`,JSON.stringify(this))
     }
 
@@ -434,11 +453,62 @@ console.log(`ELSE QUERY`,query,this.query)
 
 
 
-    logPosts(){
-        if( !fs.existsSync(`${this.name}/data/posts`) ){throw(`POSTS NOT DOWNLOADED`)}
-        let x               =   new ArchiveManager(`${this.name}/data/posts`,()=>{})
-            x.each( item => console.log(`id: ${x.id}\t${this.publishTimeMillis}\t${this.headline}`) )
+    async checkSize(queryURL){
+        console.log(queryURL)
+        let x           =   await fetch(queryURL)
+            x           =   await x.json()
+            console.log(x.data.pagination.total)
     }
+
+    async sleep(n){
+        let p=new Promise( (res,rej)=>{
+            setTimeout(_=>res(),n)
+        })
+        return p
+    }
+
+    async getArchive( url, callback = ()=>{}, _acc ){
+        let acc         =   _acc
+        let p           =   new Promise((res,rej)=>{
+            let am           =   new ArchiveManager( url, () => {
+                res(acc)
+            })
+            am.each( item => {
+                // r.push(item)
+                // console.log(acc)
+                acc=callback(item,acc)
+            })
+        })
+        return p
+    }
+
+    async readIDs(){
+        let func            =   ( item, acc ) => {acc.push(item); return acc}
+        return await this.getArchive(`${this.name}/ids`, func, [])
+    }
+
+    writeIDs(ids){
+        let output          =   fs.createWriteStream(`${this.name}/ids`)
+        ids.map( id => JSON.stringify(id) ).map( id => zlib.gzipSync(id) ).forEach( item => output.write(item) )
+        // fs.writeFileSync(`${this.name}/ids`, zlib.gzipSync(JSON.stringify(ids)))
+    }
+
+    async checkIDs(){
+        // let x           =   await this.readIDs()
+        let x = await this.getArchive( `${this.name}/ids`, ( item, acc ) => ++acc, 0 )
+        // console.log(x)
+        // return r
+        console.log( `TOTAL UNIQUE ARTICLE IDS: ${x}`,x )
+    }
+
+    async logPosts(){
+        if( !fs.existsSync(`${this.name}/data/posts`) ){throw(`POSTS NOT DOWNLOADED`)}
+        let func=( item, acc ) => console.log(`id: ${item.id}\t${item.authorIds}\t${item.publishTimeMillis}\t${item.headline}`)
+        let x = await this.getArchive(`${this.name}/data/posts`, func, null )
+        // x               =   new ArchiveManager(`${this.name}/data/posts`,()=>{})
+        //     x.each( item =>  )
+    }
+
     logAuthors(){
         let authors         =   JSON.parse(zlib.gunzipSync(fs.readFileSync(`${this.name}/data/authors`)))
         authors.forEach(author=>console.log(`id: ${author.id}\tname: ${author.screenName}\tdisplayName: ${author.displayName}`))

@@ -421,8 +421,8 @@ console.log(`ELSE QUERY`,query,this.query)
         if(this.errors.length){this.errors.forEach(err=>console.log(err))}
         console.log(`Necromancer fetchIDs() ${postProgress} ids tallied`)
         // dataOutput.end()
-        // fs.writeFileSync(`${this.name}/ids`,JSON.stringify(ids))
-        // fs.writeFileSync(`${this.name}/progressInfo`,JSON.stringify(this))
+        fs.writeFileSync(`${this.name}/ids`,JSON.stringify(ids))
+        fs.writeFileSync(`${this.name}/progressInfo`,JSON.stringify(this))
     }
 
 
